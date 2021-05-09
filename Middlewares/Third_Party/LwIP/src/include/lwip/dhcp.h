@@ -68,7 +68,6 @@ struct dhcp
 {
   /** transaction identifier of last sent request */
   u32_t xid;
-  /** track PCB allocation state */
   u8_t pcb_allocated;
   /** current DHCP state machine state */
   u8_t state;

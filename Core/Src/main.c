@@ -25,11 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
-
-
-#include "tcp_echoserver.h"
-#include <tcp_serverStMachine.h>
+#include "tcp_client.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -102,15 +98,16 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_LWIP_Init();
-  MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   SCB_CleanInvalidateDCache();
 
   //tcp_echoserver_init();
-  TCPserverStart(7);   //Declared in ProjectFolder->LWIP->App->tcp_serverStMachine.c
+ // TCPserverStart(7);   //Declared in ProjectFolder->LWIP->App->tcp_serverStMachine.c
   	  	  //My alls used function are there ProjectFolder->LWIP->App->tcp_serverStMachine.c
-
+  TCPclientStart(7);
   uint32_t YellowLedTime=0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -118,10 +115,11 @@ int main(void)
   while (1)
   {
 	  MX_LWIP_Process ();   //I don't use it its only for LwIP stack driver!
-	  if(HAL_GetTick() - YellowLedTime > 1000)
+	  if(HAL_GetTick() - YellowLedTime > 500)
 	  {
 		  YellowLedTime=HAL_GetTick();
 		  HAL_GPIO_TogglePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin);
+		 // HAL_UART_Transmit(&huart3,(uint8_t*) "HHH\n\r", sizeof("HHH\n\r")-1, 100);
 	  }
     /* USER CODE END WHILE */
 
