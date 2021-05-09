@@ -26,6 +26,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "tcp_client.h"
+#include <stdio.h>
+#include <string.h>
+#include "rtc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,6 +60,72 @@ static void MPU_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void BackupDateToBR(void);
+
+
+RTC_TimeTypeDef RtcTime;
+RTC_DateTypeDef RtcDate;
+uint16_t Milliseconds;
+
+uint8_t CompareMilliseconds;
+uint8_t CompareDate;
+
+uint8_t Message[64];
+uint8_t MessageLen;
+
+
+
+
+void BackupDateToBR(void)
+{
+	HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR2, ((RtcDate.Date << 8) | (RtcDate.Month)));
+	HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR3, ((RtcDate.Year << 8) | (RtcDate.WeekDay)));
+}
+
+void SetRTC(RTC_TimeTypeDef* sTime, 	RTC_DateTypeDef* DateToUpdate)
+{
+
+
+	if (HAL_RTC_SetTime(&hrtc, sTime, RTC_FORMAT_BIN) != HAL_OK)
+	{
+	  Error_Handler();
+	}
+
+	if (HAL_RTC_SetDate(&hrtc, DateToUpdate, RTC_FORMAT_BIN) != HAL_OK)
+	{
+	  Error_Handler();
+	}
+
+	BackupDateToBR();
+}
+
+void ClearStandbyFlags()
+{
+
+	  if (__HAL_PWR_GET_FLAG(PWR_FLAG_SB) != RESET)  //jesli wstal z stadby
+	  {
+		  __HAL_PWR_CLEAR_FLAG(PWR_FLAG_SB);
+		  HAL_RTCEx_DeactivateWakeUpTimer(&hrtc);
+			 __HAL_RTC_WAKEUPTIMER_CLEAR_FLAG(&hrtc, RTC_FLAG_WUTF);
+	  }
+	  	  else
+	  	  	  {
+		 MX_RTC_Init();
+			}
+}
+
+void EnterStandbyByMe(uint16_t time)
+{
+	float t_helper=0;
+
+	t_helper=time/0.0005;
+
+	  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc,(uint16_t)t_helper, RTC_WAKEUPCLOCK_RTCCLK_DIV16) != HAL_OK)
+	  {
+	    Error_Handler();
+	  }
+	  HAL_PWR_EnterSTANDBYMode();
+}
 
 /* USER CODE END 0 */
 
@@ -100,11 +169,15 @@ int main(void)
   MX_LWIP_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+  MX_RTC_Init();  // -< I modified this function so much...
+
   SCB_CleanInvalidateDCache();
 
-  //tcp_echoserver_init();
- // TCPserverStart(7);   //Declared in ProjectFolder->LWIP->App->tcp_serverStMachine.c
-  	  	  //My alls used function are there ProjectFolder->LWIP->App->tcp_serverStMachine.c
+ // ClearStandbyFlags();
+
+  HAL_RTC_GetTime(&hrtc, &RtcTime, RTC_FORMAT_BIN);
+  HAL_RTC_GetDate(&hrtc, &RtcDate, RTC_FORMAT_BIN);
+
   TCPclientStart(7);
   uint32_t YellowLedTime=0;
 
@@ -114,8 +187,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
 	  MX_LWIP_Process ();   //I don't use it its only for LwIP stack driver!
-	  if(HAL_GetTick() - YellowLedTime > 500)
+	  if(HAL_GetTick() - YellowLedTime > 1000)
 	  {
 		  YellowLedTime=HAL_GetTick();
 		  HAL_GPIO_TogglePin(LED_YELLOW_GPIO_Port, LED_YELLOW_Pin);
@@ -148,9 +222,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;

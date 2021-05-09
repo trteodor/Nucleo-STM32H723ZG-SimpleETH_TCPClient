@@ -1,3 +1,14 @@
+/*
+ * Dzialac dziala, potestowac potestowalem wystarczy RTCek dziala po wyjsciu ze Standby i maszyna stanow
+ * tam co kolwiek
+ * nie jest to dobrze zrobione ale no dziabac dziabie i wgl i w szczegole :)
+ */
+
+
+
+
+
+
 
 #include <ctype.h>
 #include <stdio.h>
@@ -8,6 +19,8 @@
 #include "lwip/prot/dhcp.h"
 #include "lwip/dhcp.h"
 #include "lwip.h"
+#include "rtc.h"
+#include "usart.h"
 
 #define TIME_FRM "%Y.%m.%d %H:%M:%S"
 #define PARAM_FRM "%"U32_F" %"U32_F
@@ -15,13 +28,10 @@ static const char ok_msg[]           = "OK";
 static const char set_msg[]          = "SET";
 static const char bye_msg[]          = "BYE";
 static const char error_msg[]        = "ERROR";
-//static const char hello_msg_frm[]    = "HELLO "TIME_FRM"\r\n";
 static const char param_msg_frm[]    = "PARAM "PARAM_FRM"\r\n";
-static const char ok_time_msg_frm[]  = "OK "TIME_FRM"\r\n";
 static const char ok_param_msg_frm[] = "OK "PARAM_FRM"\r\n";
 static const char bye_msg_frm[]      = "BYE "TIME_FRM"\r\n";
 static const char error_msg_frm[]    = "ERROR "TIME_FRM"\r\n";
-//static const char set_time_frm[]     = TIME_FRM;
 static const char set_param_frm[]    = PARAM_FRM;
 
 #define POLL_PER_SECOND             2
@@ -58,8 +68,7 @@ static err_t StateAutomaton(struct state *, struct tcp_pcb *,
 static err_t HelloState(struct state *, struct tcp_pcb *);
 static err_t ParamState(struct state *, struct tcp_pcb *);
 
-/* W tej jednostce translacji tylko ta funkcja nie jest wołana
-   w kontekście procedury obsługi przerwania. */
+
 
 ip_addr_t DestIPaddr;
 struct tcp_pcb *echoclient_pcb;
@@ -67,45 +76,68 @@ extern struct netif gnetif;
 
 
 int TCPclientStart(uint16_t port) {
-	  ip_addr_t DestIPaddr;
+	ip_addr_t DestIPaddr;
+	IP4_ADDR( &DestIPaddr, 192, 168, 0, 11 );
 
+
+	 struct tcp_pcb *pcb;
+	  struct state *state;
+	  err_t err;
+
+	  state = mem_malloc(sizeof(struct state));
+	  if (state == NULL)
+
+	    return -1;
+	  state->function = HelloState;
+	  /* TODO: Przeczytać ustawienia z rejestrów zapasowych. */
+	  state->param[CONNECTION_TIMEOUT] = DEFAULT_CONNECTION_TIMEOUT;
+	  state->param[STANDBY_TIME] = DEFAULT_STANDBY_TIME;
+	  state->timer = state->param[CONNECTION_TIMEOUT];
+	  state->idx = 0;
+
+
+	  uint32_t Timeoutdhcp=HAL_GetTick();
 	  struct dhcp *dhcp;
 	  dhcp = netif_dhcp_data(&gnetif);
 	  while(dhcp->state != DHCP_STATE_BOUND ) //blokujaco do oporu az sie polaczy... XD
 	  {						//a jak sie nie uda niech stoi i tak to tylko test...
 		  MX_LWIP_Process ();  //wiadomo libka musi dzialac wczesniej se ja zblokowalem
 		  	  	  	  	  //dobrze ze sie szybko kapnolem
+		  	if( (HAL_GetTick()-Timeoutdhcp) > 10000 )
+		  	{
+		  		break;
+		  	}
 	  }			//Ja nie wiem czego oni tego nie umieszcza np w przerwaniu od systicka :/
 	  	  	  	  //tylko ze to tez moze byc zle moze lepiej timer z niskim priorytetem?
 	  	  	  	  	  	  //no Najlepiej to RTOSik odzielny task i po zawodach
 	  	  	  	  	  	  	  	  //Takie sa wady bare-metal
 
 	  /* create new tcp pcb */
-	  echoclient_pcb = tcp_new();
+	 pcb = tcp_new();
 
-	  if (echoclient_pcb != NULL)
-	  {
-	    IP4_ADDR( &DestIPaddr, 192, 168, 0, 11 );
-
-	    /* connect to destination address/port */
-	    tcp_connect(echoclient_pcb,&DestIPaddr,7,connect_callback);
-	  }
-	  else
-	  {
-	    /* deallocate the pcb */
-	    memp_free(MEMP_TCP_PCB, echoclient_pcb);
+	  if (pcb == NULL) {
+	    mem_free(state);
+	    return -1;
 	  }
 
+	  tcp_arg(pcb, state);
+	  tcp_err(pcb, conn_err_callback);
+	  tcp_recv(pcb, recv_callback);
+	  tcp_poll(pcb, poll_callback, POLL_PER_SECOND);
+
+	  err = tcp_connect(pcb, &DestIPaddr, port, connect_callback);
+
+	  if (err != ERR_OK) {
+	     mem_free(state);
+	     /* Trzeba zwolnić pamięć, poprzednio było tcp_abandon(pcb, 0); */
+	     tcp_close(pcb);
+	     return -1;
+	   }
 	  return 0;
 }
 
 err_t connect_callback(void *arg, struct tcp_pcb *pcb, err_t err) {
-  /* Z analizy kodu wynika, że zawsze err == ERR_OK.
-  if (err != ERR_OK)
-    return err;
-  */
-	return tcp_write(pcb, "POZDRAWIAM\n\r", sizeof("POZDRAWIAM\n\r"), TCP_WRITE_FLAG_COPY);
- // return tcp_write_time_msg(pcb, hello_msg_frm);
+return	tcp_write_time_msg(pcb, "A");
 }
 
 #define ERR_EXIT 100
@@ -123,7 +155,7 @@ err_t recv_callback(void *arg, struct tcp_pcb *pcb,
     if (err == ERR_OK || err == ERR_EXIT)
       pbuf_free(p);
     if (err == ERR_EXIT) {
-      err = tcp_exit(arg, pcb);
+      err = tcp_exit(arg, pcb);   //jak zwrocono ERR_EXIT zamykam polaczenie i idem spac na 5sek...
     }
   }
   else {
@@ -149,7 +181,7 @@ void conn_err_callback(void *arg, err_t err) {
   /* TODO: Zapisać ustawienia do rejestrów zapasowych. */
   /* Nie musimy zwalniać pamięci, bo i tak resetujemy. Przed
      zaśnieciem należy poczekać na zakończenie transmisji. */
-  //DelayedStandby(2, state->param[STANDBY_TIME]);
+	EnterStandbyByMe(5);
 }
 
 err_t tcp_exit(struct state *state, struct tcp_pcb *pcb) {
@@ -161,34 +193,32 @@ err_t tcp_exit(struct state *state, struct tcp_pcb *pcb) {
   }
   else {
     /* TODO: Zapisać ustawienia do rejestrów zapasowych. */
-  //  DelayedStandby(2, state->param[STANDBY_TIME]);
+		EnterStandbyByMe(5);
     return ERR_OK;
   }
 }
 
 err_t tcp_write_time_msg(struct tcp_pcb *pcb, const char *format) {
-  char msg[MSG_SIZE];
-  //time_t rtime;
-  struct tm tm;
-  size_t size;
 
+	RTC_TimeTypeDef RtcTime;
+  RTC_DateTypeDef RtcDate;
+  uint16_t Milliseconds;
 
- // rtime = GetRealTimeClock();
- // if (localtime_r(&rtime, &tm) == NULL)
-  //  return ERR_OK; /* Nic rozsądnego nie można zrobić. */
-  /* Zabroń współużywania funkcji niewspółużywalnej. */
+  uint8_t Message[64];
+  uint8_t MessageLen;
 
-  size = strftime(msg, MSG_SIZE, format, &tm);
-
-  return tcp_write(pcb, msg, size, TCP_WRITE_FLAG_COPY);
+	  HAL_RTC_GetTime(&hrtc, &RtcTime, RTC_FORMAT_BIN);
+	 Milliseconds = ((RtcTime.SecondFraction-RtcTime.SubSeconds)/((float)RtcTime.SecondFraction+1) * 100);
+	  HAL_RTC_GetDate(&hrtc, &RtcDate, RTC_FORMAT_BIN);
+	  MessageLen = sprintf((char*)Message," HELLO: Date: %02d.%02d.20%02d Time: %02d:%02d:%02d:%02d\n\r", RtcDate.Date,
+	 		 		 	RtcDate.Month, RtcDate.Year, RtcTime.Hours, RtcTime.Minutes, RtcTime.Seconds, Milliseconds);
+  return tcp_write(pcb, Message, MessageLen, TCP_WRITE_FLAG_COPY);
 }
 
 err_t tcp_write_param_msg(struct tcp_pcb *pcb, struct state *s,
                           const char *format) {
   char msg[MSG_SIZE];
   size_t size;
-
-
 
   size = snprintf(msg, MSG_SIZE, format,
                   s->param[CONNECTION_TIMEOUT],
@@ -230,7 +260,7 @@ err_t StateAutomaton(struct state *s, struct tcp_pcb *pcb,
 
 #define msglen(s) (sizeof(s) - 1)
 #define msgncmp(s1, s2, n) \
-  (strncmp(s1, s2, n) == 0 && isspace((int)s1[n]))
+						(strncmp(s1, s2, n) == 0 && isspace((int)s1[n]))
 
 err_t HelloState(struct state *state, struct tcp_pcb *pcb) {
   if (msgncmp(state->msg, ok_msg, msglen(ok_msg))) {
@@ -238,25 +268,22 @@ err_t HelloState(struct state *state, struct tcp_pcb *pcb) {
     return tcp_write_param_msg(pcb, state, param_msg_frm);
   }
   else if (msgncmp(state->msg, set_msg, msglen(set_msg))) {
-    err_t err;
-    time_t t;
-    struct tm tm;
 
-  /*  if (!strptime(state->msg + msglen(set_msg), set_time_frm, &tm)) {
-      tcp_write_time_msg(pcb, error_msg_frm);
-      return ERR_EXIT;
-    }*/
-    t = mktime(&tm);
-    if (t == (time_t)-1) {
-      tcp_write_time_msg(pcb, error_msg_frm);
-      return ERR_EXIT;
-    }
-  //  SetRealTimeClock(t);
-    err = tcp_write_time_msg(pcb, ok_time_msg_frm);
-    if (err != ERR_OK)
-      return err;
-    state->function = ParamState;
-    return tcp_write_param_msg(pcb, state, param_msg_frm);
+
+	  RTC_DateTypeDef DateToUpdate={0};
+	  RTC_TimeTypeDef sTime={0};
+
+		  	sTime.Hours=	  atoi( (char*)((uint8_t*)state->msg+15) );
+		  	sTime.Minutes=	  atoi( (char*)((uint8_t*)state->msg+18) );
+		  	sTime.Seconds=	  atoi( (char*)((uint8_t*)state->msg+21) );
+
+	  	DateToUpdate.Date=	  atoi( (char*)((uint8_t*)state->msg+12) );
+	  	DateToUpdate.Month=	  atoi( (char*)((uint8_t*)state->msg+9) );
+	  	DateToUpdate.WeekDay=	1;
+	  	DateToUpdate.Year=atoi( (char*)((uint8_t*)state->msg+6) );
+		SetRTC(&sTime,&DateToUpdate);
+		tcp_write_time_msg(pcb, "A");
+		return ERR_EXIT;
   }
   else if (msgncmp(state->msg, bye_msg, msglen(bye_msg)) ||
            msgncmp(state->msg, error_msg, msglen(error_msg)))
@@ -267,16 +294,14 @@ err_t HelloState(struct state *state, struct tcp_pcb *pcb) {
   }
 }
 
-err_t ParamState(struct state *state, struct tcp_pcb *pcb) {
+err_t ParamState(struct state *state, struct tcp_pcb *pcb) {  // to nie dziala nie chcialo mi sie naprawiac
+																	//ale ogolna idea jest - mozna naprawic dla chetnych
   if (msgncmp(state->msg, ok_msg, msglen(ok_msg))) {
     tcp_write_time_msg(pcb, bye_msg_frm);
   }
   else if (msgncmp(state->msg, set_msg, msglen(set_msg))) {
     uint32_t timeout, sleep_time;
     int ret;
-
-
-    /* Zabroń współużywania funkcji niewspółużywalnej. */
 
     ret = sscanf(state->msg + msglen(set_msg), set_param_frm,
                  &timeout, &sleep_time);

@@ -105,7 +105,8 @@ void Error_Handler(void);
 #define LED_YELLOW_Pin GPIO_PIN_1
 #define LED_YELLOW_GPIO_Port GPIOE
 /* USER CODE BEGIN Private defines */
-
+extern void EnterStandbyByMe(uint16_t time);
+extern void SetRTC(RTC_TimeTypeDef* sTime, 	RTC_DateTypeDef* DateToUpdate);
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
