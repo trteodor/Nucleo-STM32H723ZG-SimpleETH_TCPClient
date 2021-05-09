@@ -1,3 +1,3 @@
-# NUCLEO-H723ZG ETH TCP server test
+# NUCLEO-H723ZG ETH TCP Client test
 Hi!
-Here i test Ethernet LwIP TCP/IP stack
+Here i test Ethernet LwIP TCP/IP Client test
