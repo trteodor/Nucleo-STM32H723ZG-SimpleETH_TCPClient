@@ -100,17 +100,16 @@ int TCPclientStart(uint16_t port) {
 	  struct dhcp *dhcp;
 	  dhcp = netif_dhcp_data(&gnetif);
 	  while(dhcp->state != DHCP_STATE_BOUND ) //blokujaco do oporu az sie polaczy... XD
-	  {						//a jak sie nie uda niech stoi i tak to tylko test...
+	  {						
 		  MX_LWIP_Process ();  //wiadomo libka musi dzialac wczesniej se ja zblokowalem
 		  	  	  	  	  //dobrze ze sie szybko kapnolem
-		  	if( (HAL_GetTick()-Timeoutdhcp) > 10000 )
+		  	if( (HAL_GetTick()-Timeoutdhcp) > 10000 )  //timeout 10sek
 		  	{
 		  		break;
 		  	}
-	  }			//Ja nie wiem czego oni tego nie umieszcza np w przerwaniu od systicka :/
-	  	  	  	  //tylko ze to tez moze byc zle moze lepiej timer z niskim priorytetem?
-	  	  	  	  	  	  //no Najlepiej to RTOSik odzielny task i po zawodach
-	  	  	  	  	  	  	  	  //Takie sa wady bare-metal
+	  }			//Ja nie wiem czego ST tego nie umieszcza np w przerwaniu od systicka :/	  	  
+	  	  	  	  	  	  //no Najlepiej to RTOSik odzielny task i po zawodach :) i tak w RTOSie moze to robia nwm nie sprawdzalem
+	  	  	  	  	  	  	  	
 
 	  /* create new tcp pcb */
 	 pcb = tcp_new();
